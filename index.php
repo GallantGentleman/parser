@@ -31,4 +31,12 @@ do {
 
 } while($page <= 2);
 
+$fp = fopen('content.csv', 'w');
+
+foreach ($items as $fields) {
+    fputcsv($fp, $fields);
+}
+
+fclose($fp);
+
 require("view/csv_table.php");
