@@ -1,42 +1,83 @@
 <?php
-header("Content-Type: text/html;charset=utf-8");
+/******************************************************************************/
+//                                                                            //
+//                           InstantCMS v1.10.6                               //
+//                        http://www.instantcms.ru/                           //
+//                                                                            //
+//                   written by InstantCMS Team, 2007-2015                    //
+//                produced by InstantSoft, (www.instantsoft.ru)               //
+//                                                                            //
+//                        LICENSED BY GNU/GPL v2                              //
+//                                                                            //
+/******************************************************************************/
 
-require_once("lib/simple_html_dom.php");
+error_reporting(0);
 
-$page = 1;
+header('Content-Type: text/html; charset=utf-8');
+header('X-Powered-By: InstantCMS');
+define('PATH', dirname(__FILE__));
+define('VALID_CMS', 1);
 
-$items = array();
-$count = 0;
-
-do {
-	$url = "pages/page" . $page . ".html";
-
-	$html = new simple_html_dom();
-	$html = file_get_html($url);
-
-	if ($html->innertext != '' and count($html->find('.product-grid'))) {
-		foreach($html->find('div.one') as $div) {
-			$items[$count]['title'] = $div->find('div.name', 0)->plaintext;
-			$items[$count]['description'] = trim($div->find('div.description', 0)->plaintext);
-			$items[$count]['price'] = trim($div->find('div.price', 0)->plaintext);
-			$items[$count]['image'] = $div->find('div.image a', 0)->first_child()->src;
-			$items[$count]['url'] = $div->find('div.image a', 0)->href;
-			$items[$count]['category'] = "Шпонированные двери / Двери экошпон";
-
-			$count++;
-		}
-		
-		$page++;
-	}
-
-} while($page <= 2);
-
-$fp = fopen('content.csv', 'w');
-
-foreach ($items as $fields) {
-    fputcsv($fp, $fields);
+// Проверяем, что система установлена
+if (!file_exists(PATH.'/includes/config.inc.php')){
+    header('location:/install/');
+    die();
 }
 
-fclose($fp);
+session_start();
 
-require("view/csv_table.php");
+require(PATH.'/core/cms.php');
+$inCore = cmsCore::getInstance();
+
+// Загружаем нужные классы
+cmsCore::loadClass('page');
+cmsCore::loadClass('user');
+cmsCore::loadClass('actions');
+
+// Проверяем что директории установки и миграции удалены
+if(is_dir(PATH.'/install') || is_dir(PATH.'/migrate')) {
+    cmsPage::includeTemplateFile('special/installation.php');
+    cmsCore::halt();
+}
+
+cmsCore::callEvent('GET_INDEX', '');
+
+$inPage = cmsPage::getInstance();
+$inConf = cmsConfig::getInstance();
+$inUser = cmsUser::getInstance();
+
+// автоматически авторизуем пользователя, если найден кукис
+$inUser->autoLogin();
+
+// проверяем что пользователь не удален и не забанен и загружаем его данные
+if (!$inUser->update() && !$_SERVER['REQUEST_URI']!=='/logout') { cmsCore::halt(); }
+
+//Если сайт выключен и пользователь не администратор,
+//то показываем шаблон сообщения о том что сайт отключен
+if ($inConf->siteoff &&
+    !$inUser->is_admin &&
+    $_SERVER['REQUEST_URI']!='/login' &&
+    $_SERVER['REQUEST_URI']!='/logout'
+   ){
+        cmsPage::includeTemplateFile('special/siteoff.php');
+        cmsCore::halt();
+}
+
+// Мониторинг пользователей
+$inUser->onlineStats();
+
+//Проверяем доступ пользователя
+//При положительном результате
+//Строим тело страницы (запускаем текущий компонент)
+if ($inCore->checkMenuAccess()) {
+    $inCore->proceedBody();
+}
+
+//Проверяем нужно ли показать входную страницу (splash)
+if(cmsPage::isSplash()){
+    //Показываем входную страницу
+    cmsPage::showSplash();
+} else {
+    //показываем шаблон сайта
+    $inPage->showTemplate();
+}
